@@ -8,12 +8,20 @@ import scipy.optimize
 import scipy.stats
 import math
 from PIL import Image
+from PIL import Image, ImageOps
+from PIL import Image, ImageFilter
+from PIL import Image, ImageDraw
+from PIL import Image, ImageFont
+from PIL import Image, ImageChops
+from PIL import Image, ImagePath
+from PIL import Image, ImageColor
+from PIL.Image import Resampling
 import rawpy
 import matplotlib
 from matplotlib import pyplot as plt
 from skimage import exposure
 from skimage.restoration import denoise_bilateral, denoise_tv_chambolle, estimate_sigma
-from skimage.morphology import closing, opening, erosion, dilation, disk, diamond, square
+from skimage.morphology import closing, opening, erosion, dilation, disk, diamond, square, footprint_rectangle
 
 matplotlib.use('TkAgg')
 
@@ -311,11 +319,23 @@ def refine_neighborhood_map(nmap, min_size = 10, radius = 3):
 
 
 def load_image_and_depth_map(img_fname, depths_fname, size_limit = 1024):
+    # depths = Image.open(depths_fname)
+    # img = Image.fromarray(rawpy.imread(img_fname).postprocess())
+    # img.thumbnail((size_limit, size_limit), Image.ANTIALIAS)
+    # depths = depths.resize(img.size, Image.ANTIALIAS)
+    # return np.float32(img) / 255.0, np.array(depths)
+
+    # code below can be used to load PNG RGB images and tiff depth maps
     depths = Image.open(depths_fname)
-    img = Image.fromarray(rawpy.imread(img_fname).postprocess())
-    img.thumbnail((size_limit, size_limit), Image.ANTIALIAS)
-    depths = depths.resize(img.size, Image.ANTIALIAS)
-    return np.float32(img) / 255.0, np.array(depths)
+    img = Image.open(img_fname).convert('RGB')
+
+    img.thumbnail((size_limit, size_limit), Resampling.LANCZOS)
+    depths = depths.resize(img.size, Resampling.LANCZOS)
+
+    img = np.array(img).astype(np.float32) / 255.0
+    depths = np.array(depths)
+
+    return img, depths
 
 '''
 White balance with 'grey world' hypothesis
@@ -531,8 +551,14 @@ def run_pipeline(img, depths, args):
     return recovered
 
 def preprocess_for_monodepth(img_fname, output_fname, size_limit=1024):
-    img = Image.fromarray(rawpy.imread(img_fname).postprocess())
-    img.thumbnail((size_limit, size_limit), Image.ANTIALIAS)
+    # img = Image.fromarray(rawpy.imread(img_fname).postprocess())
+    # img.thumbnail((size_limit, size_limit), Image.ANTIALIAS)
+    # img_adapteq = exposure.equalize_adapthist(np.array(img), clip_limit=0.03)
+    # Image.fromarray((np.round(img_adapteq * 255.0)).astype(np.uint8)).save(output_fname)
+
+    # code below are used to preprocess PNG RGB images for monodepth
+    img = Image.open(img_fname).convert('RGB')
+    img.thumbnail((size_limit, size_limit), Resampling.LANCZOS)
     img_adapteq = exposure.equalize_adapthist(np.array(img), clip_limit=0.03)
     Image.fromarray((np.round(img_adapteq * 255.0)).astype(np.uint8)).save(output_fname)
 
