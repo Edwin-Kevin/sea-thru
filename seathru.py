@@ -16,12 +16,11 @@ from PIL import Image, ImageChops
 from PIL import Image, ImagePath
 from PIL import Image, ImageColor
 from PIL.Image import Resampling
-import rawpy
 import matplotlib
 from matplotlib import pyplot as plt
 from skimage import exposure
 from skimage.restoration import denoise_bilateral, denoise_tv_chambolle, estimate_sigma
-from skimage.morphology import closing, opening, erosion, dilation, disk, diamond, square, footprint_rectangle
+from skimage.morphology import closing, opening, erosion, dilation, disk, diamond, square, footprint_rectangle, rectangle
 
 matplotlib.use('TkAgg')
 
@@ -314,7 +313,7 @@ def refine_neighborhood_map(nmap, min_size = 10, radius = 3):
         if size < min_size and label != 0:
             for x, y in zip(*np.where(nmap == label)):
                 refined_nmap[x, y] = find_closest_label(refined_nmap, x, y)
-    refined_nmap = closing(refined_nmap, square(radius))
+    refined_nmap = closing(refined_nmap, footprint_rectangle((radius, radius)))
     return refined_nmap, num_labels - 1
 
 
@@ -329,8 +328,13 @@ def load_image_and_depth_map(img_fname, depths_fname, size_limit = 1024):
     depths = Image.open(depths_fname)
     img = Image.open(img_fname).convert('RGB')
 
-    img.thumbnail((size_limit, size_limit), Resampling.LANCZOS)
-    depths = depths.resize(img.size, Resampling.LANCZOS)
+    if depths.size != img.size:
+        print(f"[Warning] Depth map size {depths.size} != Image size {img.size}. Resizing depth map to match image size.",
+               flush=True)
+        depths = depths.resize(img.size, Resampling.LANCZOS)
+
+    # img.thumbnail((size_limit, size_limit), Resampling.LANCZOS)
+    # depths = depths.resize(img.size, Resampling.LANCZOS)
 
     img = np.array(img).astype(np.float32) / 255.0
     depths = np.array(depths)
@@ -558,7 +562,7 @@ def preprocess_for_monodepth(img_fname, output_fname, size_limit=1024):
 
     # code below are used to preprocess PNG RGB images for monodepth
     img = Image.open(img_fname).convert('RGB')
-    img.thumbnail((size_limit, size_limit), Resampling.LANCZOS)
+    # img.thumbnail((size_limit, size_limit), Resampling.LANCZOS)
     img_adapteq = exposure.equalize_adapthist(np.array(img), clip_limit=0.03)
     Image.fromarray((np.round(img_adapteq * 255.0)).astype(np.uint8)).save(output_fname)
 
