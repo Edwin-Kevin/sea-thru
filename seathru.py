@@ -2,25 +2,18 @@ import collections
 import sys
 import argparse
 import numpy as np
-import sklearn as sk
 import scipy as sp
 import scipy.optimize
 import scipy.stats
 import math
+import os
 from PIL import Image
-from PIL import Image, ImageOps
-from PIL import Image, ImageFilter
-from PIL import Image, ImageDraw
-from PIL import Image, ImageFont
-from PIL import Image, ImageChops
-from PIL import Image, ImagePath
-from PIL import Image, ImageColor
 from PIL.Image import Resampling
 import matplotlib
 from matplotlib import pyplot as plt
 from skimage import exposure
 from skimage.restoration import denoise_bilateral, denoise_tv_chambolle, estimate_sigma
-from skimage.morphology import closing, opening, erosion, dilation, disk, diamond, square, footprint_rectangle, rectangle
+from skimage.morphology import closing, opening, erosion, dilation, disk, diamond, square, footprint_rectangle
 
 matplotlib.use('TkAgg')
 
@@ -582,9 +575,9 @@ def preprocess_monodepth_depth_map(depths, additive_depth, multiply_depth):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--image', required=True, help='Input image')
-    parser.add_argument('--depth-map', required=True, help='Input depth map')
-    parser.add_argument('--output', default='output.png', help='Output filename')
+    parser.add_argument('--image', required=True, help='Input image directory')
+    parser.add_argument('--depth-map', required=True, help='Input depth map directory')
+    parser.add_argument('--output', required=True, help='Output directory')
     parser.add_argument('--f', type=float, default=2.0, help='f value (controls brightness)')
     parser.add_argument('--l', type=float, default=0.5, help='l value (controls balance of attenuation constants)')
     parser.add_argument('--p', type=float, default=0.01, help='p value (controls locality of illuminant map)')
@@ -600,19 +593,50 @@ if __name__ == '__main__':
     parser.add_argument('--equalize-image', action='store_true', help='Histogram equalization for final output')
     args = parser.parse_args()
 
-    if args.preprocess_for_monodepth:
-        preprocess_for_monodepth(args.image, args.output, args.size)
-    else:
-        print('Loading image...', flush=True)
-        img, depths = load_image_and_depth_map(args.image, args.depth_map, args.size)
-        if args.monodepth:
-            depths = preprocess_monodepth_depth_map(depths, args.monodepth_add_depth, args.monodepth_multiply_depth)
-        else:
-            depths = preprocess_sfm_depth_map(depths, args.min_depth, args.max_depth)
+    os.makedirs(args.output, exist_ok=True)
+ 
+    all_color_files = sorted(f for f in os.listdir(args.image) if f.lower().endswith('.png'))
+
+    for fname in all_color_files:
+        name_no_ext, _ = os.path.splitext(fname) # "imgA"
+        depth_fname = "depth" + name_no_ext + ".tif" # "depthImgA.tif"
+
+        depth_path = os.path.join(args.depth_map, depth_fname)
+        color_path = os.path.join(args.image, fname)
+
+        if not os.path.exists(depth_path):
+            print(f"[Warning] Depth map {depth_path} does not exist. Skipping image {color_path}.", flush=True)
+            continue
+
+        print(f"Processing {fname} with depth {depth_fname} ...")
+        img, depths = load_image_and_depth_map(color_path, depth_path, args.size)
+        depths = preprocess_sfm_depth_map(depths, args.min_depth, args.max_depth)
         recovered = run_pipeline(img, depths, args)
         if args.equalize_image:
             recovered = exposure.equalize_adapthist(np.array(recovered), clip_limit=0.03)
             sigma_est = estimate_sigma(recovered, multichannel=True, average_sigmas=True)
             recovered = denoise_tv_chambolle(recovered, sigma_est, multichannel=True)
-        plt.imsave(args.output, recovered)
-        print('Done.')
+        
+        out_fname = f"out_{name_no_ext}.png"
+        out_path = os.path.join(args.output, out_fname)
+        plt.imsave(out_path, recovered)
+        print(f"Saved to {out_path}")
+
+    print('All done.')
+
+    # if args.preprocess_for_monodepth:
+    #     preprocess_for_monodepth(args.image, args.output, args.size)
+    # else:
+    #     print('Loading image...', flush=True)
+    #     img, depths = load_image_and_depth_map(args.image, args.depth_map, args.size)
+    #     if args.monodepth:
+    #         depths = preprocess_monodepth_depth_map(depths, args.monodepth_add_depth, args.monodepth_multiply_depth)
+    #     else:
+    #         depths = preprocess_sfm_depth_map(depths, args.min_depth, args.max_depth)
+    #     recovered = run_pipeline(img, depths, args)
+    #     if args.equalize_image:
+    #         recovered = exposure.equalize_adapthist(np.array(recovered), clip_limit=0.03)
+    #         sigma_est = estimate_sigma(recovered, multichannel=True, average_sigmas=True)
+    #         recovered = denoise_tv_chambolle(recovered, sigma_est, multichannel=True)
+    #     plt.imsave(args.output, recovered)
+    #     print('Done.')
